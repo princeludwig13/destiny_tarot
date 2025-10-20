@@ -12,8 +12,8 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 # Храним последние бесплатные запросы
 user_last_free_date = {}
 
-# Настройка OpenAI
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# Настройка OpenAI (старая версия)
+openai.api_key = OPENAI_API_KEY
 
 def can_use_free(user_id):
     """Проверяет, может ли пользователь использовать бесплатный запрос сегодня"""
@@ -60,10 +60,6 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"""
 {status}
 
-💎 Статус: {status}
-📊 Запросы сегодня: использован
-🔄 Новый бесплатный запрос: через 24 часа
-
 💳 Чтобы купить дополнительные запросы, используй /buy
     """
     await update.message.reply_text(text)
@@ -81,13 +77,28 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💸 **Способы оплаты:**
 1. СБП (по номеру телефона)
 2. Карта (Tinkoff, Сбер)
-3. Крипто (USDT)
 
-📨 Для оплаты напишите @ваш_логин (замените на ваш логин в Telegram)
+📨 Для оплаты напишите @ваш_логин
 
 После оплаты вы получите запросы в течение 5 минут!
     """
     await update.message.reply_text(text)
+
+async def get_ai_prediction(prompt):
+    """Функция для работы со старой версией OpenAI"""
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Ты - мудрый таролог. Дай краткое предсказание (2-3 предложения) в мистическом стиле. Назови конкретную карту Таро и ее значение."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=150
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logging.error(f"OpenAI error: {e}")
+        return "К сожалению, карты пока молчат. Попробуйте позже."
 
 async def card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Выдает карту дня с проверкой лимита"""
@@ -103,21 +114,8 @@ async def card_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.chat.send_action(action="typing")
     
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Ты - мудрый таролог. Дай краткое предсказание на день (2-3 предложения) в мистическом стиле. Назови конкретную карту Таро и ее значение."},
-                {"role": "user", "content": "Вытащи случайную карту Таро и дай предсказание на сегодня"}
-            ],
-            max_tokens=150
-        )
-        
-        prediction = response.choices[0].message.content
-        await update.message.reply_text(f"🃏 Карта дня: \n\n{prediction}\n\n✨ Бесплатный запрос использован")
-        
-    except Exception as e:
-        await update.message.reply_text("⚠️ Произошла ошибка. Попробуйте позже.")
+    prediction = await get_ai_prediction("Вытащи случайную карту Таро и дай предсказание на сегодня")
+    await update.message.reply_text(f"🃏 Карта дня: \n\n{prediction}\n\n✨ Бесплатный запрос использован")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает обычные сообщения с проверкой лимита"""
@@ -138,24 +136,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.chat.send_action(action="typing")
     
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo", 
-            messages=[
-                {"role": "system", "content": "Ты - эзотерический таролог. Ответь на вопрос пользователя метафорично, как при гадании на картах. Будь загадочным, но поддерживающим. Упомяни архетипы Таро."},
-                {"role": "user", "content": user_message}
-            ],
-            max_tokens=200
-        )
-        
-        answer = response.choices[0].message.content
-        await update.message.reply_text(
-            f"🔮 В ответ на твой вопрос: \n\n{answer}\n\n"
-            f"✨ Бесплатный запрос использован"
-        )
-        
-    except Exception as e:
-        await update.message.reply_text("⚠️ Произошла ошибка. Попробуйте позже.")
+    prediction = await get_ai_prediction(user_message)
+    await update.message.reply_text(
+        f"🔮 В ответ на твой вопрос: \n\n{prediction}\n\n"
+        f"✨ Бесплатный запрос использован"
+    )
 
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
